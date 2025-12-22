@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(ahl_hall_model_py)
+project(ahl_dwc)
 
 find_package(pybind11 REQUIRED CONFIG)
 
@@ -10,4 +10,4 @@ pybind11_add_module(_core
 )
 
 target_include_directories(_core PRIVATE src)
-install(TARGETS _core DESTINATION ahl_hall_model_py)
+install(TARGETS _core DESTINATION ahl_dwc)

@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ahl_hall_model_py import adult_weight, energy_build, set_seed
+from ahl_dwc import adult_weight, energy_build, set_seed
 
 set_seed(623)
 
