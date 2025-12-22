@@ -1,3 +1,40 @@
+//
+//  energy_build.cpp
+//
+//  This function performs different interpolation methods for values in a matrix
+//  that represent different measured moments in time.
+//
+//  INPUT:
+//  Energy   .- Includes measurements of energy comsumption where each row is an individual
+//  and each column is a time in Time in which it was measured.
+//  Time     .- Vector of measurement times of the energy. First element of Time should be a 0
+//  otherwise the model does not make any sense.
+//  interpol .- Interpolation mode: linear, exponential, stepwise_r, stepwise_l,
+//  brownian and logarihmmic.
+//
+//  Authors:
+//  Dalia Camacho-García-Formentí
+//  Rodrigo Zepeda-Tello
+//
+//----------------------------------------------------------------------------------------
+// License: MIT
+// Copyright 2018 Instituto Nacional de Salud Pública de México
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+// and associated documentation files (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge, publish, distribute,
+// sublicense, and/or sell copies of the Software, and to permit persons to whom the Software
+// is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies
+// or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+// BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//----------------------------------------------------------------------------------------
+
 #include "shim.hpp"
 #include <math.h>
 
@@ -13,7 +50,7 @@ NumericMatrix EnergyBuilder(NumericMatrix Energy, NumericVector Time,
     // Numeric matrix to return
     NumericMatrix Evalues(Energy.nrow(), days + 1);
 
-    double K = 5000;
+    double K = 5000; // To avoid logarithm starting at 0 we displace the exponential to let for a maximum y2 - y1 of 1000.
 
     // Brownian bridge
     if (interpol.compare("Brownian") == 0)

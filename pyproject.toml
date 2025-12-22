@@ -7,25 +7,28 @@ build.verbose = true
 logging.level = "INFO"
 
 [project]
-name = "ahl_hall_model_py"
+name = "ahl_dwc"
 authors = [{ name = "Harry Wilde", email = "harry.wilde@nesta.org.uk" }]
 version = "0.1.0"
-description = "A Python wrapper for the R `bw` package Hall model C++ implementation"
+description = "A Python wrapper for the R `bw` package's Hall model C++ implementation"
 requires-python = ">=3.8"
 readme = "README.md"
 license = "MIT"
-dependencies = [
-    "matplotlib>=3.7.5",
-    "numpy>=1.24.4",
-    "polars>=1.8.2",
-]
+dependencies = ["numpy>=1.24.4", "polars>=1.8.2"]
 
 [project.urls]
-repository = "https://github.com/nestauk/ahl_hall_model_py"
-issues = "https://github.com/nestauk/ahl_hall_model_py/issues"
+repository = "https://github.com/nestauk/ahl_dwc"
+issues = "https://github.com/nestauk/ahl_dwc/issues"
 
 [dependency-groups]
-dev = ["ipykernel", "jupytext", "nbstripout", "ruff", "pre-commit"]
+dev = [
+    "ipykernel",
+    "jupytext",
+    "nbstripout",
+    "ruff",
+    "pre-commit",
+    "matplotlib>=3.7.5",
+]
 
 [tool.uv]
 package = true
@@ -44,12 +47,9 @@ select = [
     "N",   # pep8-naming: Naming conventions
     "W",   # pycodestyle: Warnings (default)
 ]
-ignore = [
-    "S101", # Warns about assert being removed when compiled
-]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ahl_hall_model_py"]
+known-first-party = ["ahl_dwc"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
