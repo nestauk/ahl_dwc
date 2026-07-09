@@ -1,0 +1,87 @@
+name: Publish to CodeArtifact PyPI
+
+# Publishes the package to the private AWS CodeArtifact PyPI repository when a
+# GitHub Release is published. This matches the documented manual release process:
+# the version is bumped by hand in pyproject.toml before the release is tagged, so
+# building at the release tag produces the correct version. Development
+# (vX.Y.Z.dev0) versions are never given a GitHub Release and so are never published.
+#
+# Note: ahl_dwc is a compiled package (scikit-build-core + pybind11), so `uv build`
+# compiles the C++ extension and produces a platform-specific wheel for the runner
+# (linux/x86_64) plus an sdist. If wheels for other platforms are needed, switch the
+# build step to cibuildwheel.
+on:
+  release:
+    types: [published]
+  # Manual trigger for re-runs / testing. Provide a tag to build at (defaults to
+  # the branch the workflow is run from if left blank).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and publish (e.g. v0.1.0)"
+        required: false
+        type: string
+
+permissions:
+  id-token: write # AWS OIDC + GitHub attestations
+  attestations: write # sign artifacts
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Skip pre-releases so in-development versions are never published
+    if: ${{ !github.event.release.prerelease }}
+    steps:
+      # 1. Checkout at the released tag (or the manually supplied tag) so the
+      #    build matches the released version
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+
+      # 2. Install uv (provisions Python per requires-python in pyproject.toml)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # 3. Build the package (compiles the C++ extension via scikit-build-core)
+      - name: Build package
+        run: uv build
+
+#      # 4. Generate SLSA build provenance attestation for the wheel
+#      - name: Attest build provenance
+#        uses: actions/attest-build-provenance@v1
+#        with:
+#          subject-path: "dist/*.whl"
+
+      # 5. Authenticate to AWS via OIDC (no long-lived keys)
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-actions-codeartifact
+
+      # 6. Generate a short-lived CodeArtifact auth token (masked, single output)
+      - name: Get CodeArtifact token
+        id: token
+        run: |
+          TOKEN=$(aws codeartifact get-authorization-token \
+            --domain ${{ secrets.AWS_CA_DOMAIN }} \
+            --domain-owner ${{ secrets.AWS_ACCOUNT_ID }} \
+            --region ${{ vars.AWS_REGION }} \
+            --query authorizationToken --output text)
+          echo "::add-mask::$TOKEN"
+          echo "auth_token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      # 7. Publish to the private CodeArtifact PyPI repository
+      - name: Publish to CodeArtifact
+        env:
+          # Username MUST be "aws" for CodeArtifact (not "__token__")
+          UV_PUBLISH_USERNAME: aws
+          UV_PUBLISH_PASSWORD: ${{ steps.token.outputs.auth_token }}
+          # Canonical CodeArtifact PyPI endpoint (must end with a slash)
+          UV_PUBLISH_URL: https://${{ secrets.AWS_CA_DOMAIN }}-${{ secrets.AWS_ACCOUNT_ID }}.d.codeartifact.${{ vars.AWS_REGION }}.amazonaws.com/pypi/${{ secrets.AWS_CA_REPO }}/
+        run: uv publish
