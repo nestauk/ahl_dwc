@@ -13,6 +13,14 @@ name: Publish to CodeArtifact PyPI
 on:
   release:
     types: [published]
+  # Manual trigger for re-runs / testing. Provide a tag to build at (defaults to
+  # the branch the workflow is run from if left blank).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and publish (e.g. v0.1.0)"
+        required: false
+        type: string
 
 permissions:
   id-token: write # AWS OIDC + GitHub attestations
@@ -25,11 +33,12 @@ jobs:
     # Skip pre-releases so in-development versions are never published
     if: ${{ !github.event.release.prerelease }}
     steps:
-      # 1. Checkout at the released tag so the build matches the released version
+      # 1. Checkout at the released tag (or the manually supplied tag) so the
+      #    build matches the released version
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name }}
 
       # 2. Install uv (provisions Python per requires-python in pyproject.toml)
       - name: Install uv
