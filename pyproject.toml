@@ -28,10 +28,14 @@ dev = [
     "ruff",
     "pre-commit",
     "matplotlib>=3.7.5",
+    "pytest>=7.0",
 ]
 
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120
@@ -56,6 +60,8 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "E402", "D104"]
+# Tests don't need type annotations or module/function docstrings.
+"tests/**" = ["ANN", "D100", "D103"]
 
 [tool.ruff.format]
 docstring-code-format = true

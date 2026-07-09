@@ -46,10 +46,13 @@ inline void fill_rnorm(double *ptr, size_t n, double mean = 0.0, double sd = 1.0
 class NumericVector : public std::vector<double>
 {
 public:
+    // Inherit std::vector's constructors: (), (n), (n, v), initializer_list,
+    // iterator range, copy and move. We deliberately do NOT redeclare the (n)
+    // and (n, v) constructors here: doing so made calls like NumericVector(int, 0.0)
+    // ambiguous under GCC/libstdc++ (the inherited fill ctor vs the redeclared one),
+    // which broke Linux builds while compiling fine under Clang/libc++. The inherited
+    // ctors are behaviourally identical (vector(n) value-initialises to 0.0).
     using std::vector<double>::vector;
-    NumericVector() : std::vector<double>() {}
-    explicit NumericVector(size_t n) : std::vector<double>(n, 0.0) {}
-    NumericVector(size_t n, double v) : std::vector<double>(n, v) {}
     NumericVector(const std::vector<double> &v) : std::vector<double>(v) {}
 
     double &operator()(size_t i) { return (*this)[i]; }
