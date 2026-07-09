@@ -6,10 +6,15 @@ name: Publish to CodeArtifact PyPI
 # building at the release tag produces the correct version. Development
 # (vX.Y.Z.dev0) versions are never given a GitHub Release and so are never published.
 #
-# Note: ahl_dwc is a compiled package (scikit-build-core + pybind11), so `uv build`
-# compiles the C++ extension and produces a platform-specific wheel for the runner
-# (linux/x86_64) plus an sdist. If wheels for other platforms are needed, switch the
-# build step to cibuildwheel.
+# ahl_dwc is a compiled package (scikit-build-core + pybind11), so each platform
+# must build its own wheel. This runs as a matrix over macOS arm64, Linux x86_64,
+# and Linux arm64.
+#
+# NOTE: the Linux legs currently FAIL to compile — the C++ is ambiguous under
+# GCC/libstdc++ (see issue #7) though it builds under macOS's Apple Clang/libc++.
+# They are marked `continue-on-error` so they do not block the macOS publish. Once
+# #7 lands, drop `continue-on-error` from those legs (and switch them to
+# manylinux-compliant builds, e.g. cibuildwheel, so the wheel tags are portable).
 on:
   release:
     types: [published]
@@ -29,9 +34,35 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    name: publish (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
     # Skip pre-releases so in-development versions are never published
     if: ${{ !github.event.release.prerelease }}
+    # Linux legs are expected to fail compiling until issue #7 is fixed; keep them
+    # non-blocking so the macOS publish still gates the workflow.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      # Don't cancel the macOS leg if a Linux leg fails (and vice versa)
+      fail-fast: false
+      matrix:
+        include:
+          # macOS arm64 — Apple Clang + libc++, matches local dev. Must succeed.
+          # Builds the sdist too (it is platform-independent, so exactly one leg
+          # publishes it; the others build wheel-only to avoid a duplicate upload).
+          - os: macos-latest
+            label: macos-arm64
+            experimental: false
+            build_args: "" # wheel + sdist
+          # Linux x86_64 — GCC/libstdc++. Non-blocking until #7.
+          - os: ubuntu-latest
+            label: linux-x86_64
+            experimental: true
+            build_args: "--wheel" # sdist is published from the macOS leg only
+          # Linux arm64 — GCC/libstdc++ on GitHub's arm64 runner. Non-blocking until #7.
+          - os: ubuntu-24.04-arm
+            label: linux-arm64
+            experimental: true
+            build_args: "--wheel"
     steps:
       # 1. Checkout at the released tag (or the manually supplied tag) so the
       #    build matches the released version
@@ -46,9 +77,10 @@ jobs:
         with:
           enable-cache: true
 
-      # 3. Build the package (compiles the C++ extension via scikit-build-core)
+      # 3. Build the package (compiles the C++ extension via scikit-build-core).
+      #    macOS builds wheel + sdist; Linux builds wheel only (see matrix comment).
       - name: Build package
-        run: uv build
+        run: uv build ${{ matrix.build_args }}
 
 #      # 4. Generate SLSA build provenance attestation for the wheel
 #      - name: Attest build provenance
