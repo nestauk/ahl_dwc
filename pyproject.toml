@@ -34,6 +34,16 @@ dev = [
 [tool.uv]
 package = true
 
+[tool.tox]
+requires = ["tox>=4.21", "tox-uv>=1.13"]
+env_list = ["py310", "py311", "py312", "py313", "py314"]
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+description = "build the extension and run the test suite under {base_python}"
+dependency_groups = ["dev"]
+commands = [["pytest", "-q"]]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
