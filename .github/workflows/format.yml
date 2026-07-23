@@ -1,0 +1,38 @@
+name: Format
+
+# Static checks for both the Python and C/C++ sources. Python (ruff) is
+# blocking; the C/C++ checks are non-blocking for now (they surface issues
+# without failing the build on the ported code's pre-existing formatting) until
+# a dedicated clang-format pass lands.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # Pinned to match .pre-commit-config.yaml.
+      - name: ruff check
+        run: uvx ruff@0.14.10 check .
+      - name: ruff format --check
+        run: uvx ruff@0.14.10 format --check .
+
+  cpp:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format + cppcheck
+        run: sudo apt-get update && sudo apt-get install -y clang-format cppcheck
+      - name: clang-format (dry-run, Google style)
+        run: clang-format --dry-run --Werror --style=Google src/*.cpp src/*.hpp src/*.h
+      - name: cppcheck
+        run: cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
