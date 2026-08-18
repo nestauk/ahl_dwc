@@ -66,6 +66,11 @@ carried two further decisions:
   the build on the ported code's pre-existing formatting … until a dedicated clang-format pass
   lands". Python ruff stays blocking, pinned to `0.14.10` to match `.pre-commit-config.yaml`.
 
+  > **Superseded for clang-format** by [ADR 0010](0010-scope-clang-format-to-owned-sources.md).
+  > That pass has now landed: clang-format is pinned, scoped to `shim.hpp` and `bindings.cpp`, and
+  > blocking. `cppcheck` remains advisory. This ADR keeps its number and status; only this
+  > consequence is out of date.
+
 **3. Sequence the two changes separately.** Issue #7 records that the C++ change was "Deferred out of
 the matrix-CI work so that C++ source changes are reviewed separately from CI config" — hence PR #8
 (CI/publish matrix) and PR #10 (C++ fix) as two open PRs, with #8's Linux legs non-blocking until #10
@@ -100,9 +105,15 @@ Negative:
 - **Neither PR has merged.** `main` still cannot produce a Linux wheel, and `main`'s publish workflow
   (ADR 0008) builds exactly that — one linux/x86_64 wheel — on a commit where, per issue #7, the
   compile could not have succeeded.
-- **The `cpp` job reports green while failing.** `continue-on-error` is set at job level, so the
-  check conclusion is green even when `clang-format` and `cppcheck` exit non-zero; you must open the
-  log. This also masks genuine problems in newly written C++ — nobody is forced to look.
+- **The `cpp` job fails on every run without blocking anything.** `continue-on-error` is set at job
+  level, so the _workflow_ passes while the job itself reports `fail` — a permanent red X that
+  everyone learns to ignore. Worse, the failure is in the first step: `clang-format` exits non-zero
+  over the upstream sources, so `cppcheck` never runs at all. Two genuine `uninitMemberVarNoCtor`
+  warnings in `shim.hpp` sat unreported for the whole life of the job.
+
+  > **Resolved** by [ADR 0010](0010-scope-clang-format-to-owned-sources.md) and PR #21. The
+  > cppcheck warnings themselves were fixed in `85a398c` on this PR.
+
 - **No Windows leg.** Windows is untested and unsupported in fact, though nothing says so in
   `pyproject.toml`.
 - **Nothing below Python 3.10 is exercised**, while `requires-python = ">=3.8"`
