@@ -42,12 +42,21 @@ jobs:
       # check on a runner-image bump alone. Style lives in .clang-format.
       - name: clang-format (dry-run)
         run: uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
+      # Both cppcheck steps are advisory AND time-boxed. The apt install has
+      # wedged for over an hour on three separate runs, and without these
+      # guards it takes the whole job — including the blocking clang-format
+      # result above — down with it. clang-format runs first for the same
+      # reason: the check that gates the merge must not depend on apt.
       - name: Install cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
+        continue-on-error: true
+        timeout-minutes: 5
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cppcheck
       # Advisory: the apt version is not pinned, so a runner-image bump can
       # introduce new diagnostics that are not a regression in our code.
       # Passing clean under cppcheck 2.21 locally — promote to blocking once
-      # the CI version is pinned too.
+      # the CI version is pinned and installed from something other than apt
+      # (roadmap task 3.4).
       - name: cppcheck
         continue-on-error: true
+        timeout-minutes: 5
         run: cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
