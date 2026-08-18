@@ -1,0 +1,62 @@
+name: Format
+
+# Static checks for both the Python and C/C++ sources.
+#
+# Python (ruff) is blocking. clang-format is now blocking too, but only over
+# the sources we own — src/shim.hpp and src/bindings.cpp — because the rest of
+# src/ is kept byte-identical to upstream INSP-RH/bw. cppcheck runs over all of
+# src/ and is advisory until its version is pinned.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # Pinned to match .pre-commit-config.yaml.
+      - name: ruff check
+        run: uvx ruff@0.14.10 check .
+      - name: ruff format --check
+        run: uvx ruff@0.14.10 format --check .
+
+  cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # Only the sources we own are formatted. src/adult_weight.{h,cpp} and
+      # src/energy_build.cpp are kept byte-identical to upstream INSP-RH/bw so
+      # upstream fixes can be pulled in without a merge — formatting them would
+      # forfeit that. See docs/adr/0002-isolate-rcpp-behind-shim.md.
+      #
+      # Version-pinned for the same reason ruff is: clang-format's output
+      # changes between major versions, so an unpinned binary would fail this
+      # check on a runner-image bump alone. Style lives in .clang-format.
+      - name: clang-format (dry-run)
+        run: uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
+      # Both cppcheck steps are advisory AND time-boxed. The apt install has
+      # wedged for over an hour on three separate runs, and without these
+      # guards it takes the whole job — including the blocking clang-format
+      # result above — down with it. clang-format runs first for the same
+      # reason: the check that gates the merge must not depend on apt.
+      - name: Install cppcheck
+        continue-on-error: true
+        timeout-minutes: 5
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cppcheck
+      # Advisory: the apt version is not pinned, so a runner-image bump can
+      # introduce new diagnostics that are not a regression in our code.
+      # Passing clean under cppcheck 2.21 locally — promote to blocking once
+      # the CI version is pinned and installed from something other than apt
+      # (roadmap task 3.4).
+      - name: cppcheck
+        continue-on-error: true
+        timeout-minutes: 5
+        run: cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/

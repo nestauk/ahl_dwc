@@ -28,10 +28,24 @@ dev = [
     "ruff",
     "pre-commit",
     "matplotlib>=3.7.5",
+    "pytest>=7.0",
 ]
 
 [tool.uv]
 package = true
+
+[tool.tox]
+requires = ["tox>=4.21", "tox-uv>=1.13"]
+env_list = ["py310", "py311", "py312", "py313", "py314"]
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+description = "build the extension and run the test suite under {base_python}"
+dependency_groups = ["dev"]
+commands = [["pytest", "-q"]]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120
@@ -56,6 +70,8 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "E402", "D104"]
+# Tests don't need type annotations or module/function docstrings.
+"tests/**" = ["ANN", "D100", "D103"]
 
 [tool.ruff.format]
 docstring-code-format = true

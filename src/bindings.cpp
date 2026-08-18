@@ -15,12 +15,11 @@ NumericVector to_vec(const std::vector<double> &in) { return NumericVector(in); 
 py::dict py_adult_weight(std::vector<double> bw, std::vector<double> ht, std::vector<double> age,
                          std::vector<double> sex, std::vector<std::vector<double>> EIchange,
                          std::vector<std::vector<double>> NAchange, std::vector<double> PAL,
-                         std::vector<double> pcarb_base, std::vector<double> pcarb, double dt,
-                         double days, bool checkValues)
+                         std::vector<double> pcarb_base, std::vector<double> pcarb, double dt, double days,
+                         bool checkValues)
 {
-    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex),
-                 to_mat(EIchange), to_mat(NAchange),
-                 to_vec(PAL), to_vec(pcarb), to_vec(pcarb_base), dt, checkValues);
+    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex), to_mat(EIchange), to_mat(NAchange), to_vec(PAL),
+                 to_vec(pcarb), to_vec(pcarb_base), dt, checkValues);
     return Person.rk4(days);
 }
 
@@ -30,10 +29,8 @@ py::dict py_adult_weight_EI(std::vector<double> bw, std::vector<double> ht, std:
                             std::vector<double> pcarb_base, std::vector<double> pcarb, double dt,
                             std::vector<double> extradata, double days, bool checkValues, bool isEnergy)
 {
-    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex),
-                 to_mat(EIchange), to_mat(NAchange),
-                 to_vec(PAL), to_vec(pcarb), to_vec(pcarb_base), dt,
-                 to_vec(extradata), checkValues, isEnergy);
+    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex), to_mat(EIchange), to_mat(NAchange), to_vec(PAL),
+                 to_vec(pcarb), to_vec(pcarb_base), dt, to_vec(extradata), checkValues, isEnergy);
     return Person.rk4(days);
 }
 
@@ -41,13 +38,11 @@ py::dict py_adult_weight_EI_fat(std::vector<double> bw, std::vector<double> ht, 
                                 std::vector<double> sex, std::vector<std::vector<double>> EIchange,
                                 std::vector<std::vector<double>> NAchange, std::vector<double> PAL,
                                 std::vector<double> pcarb_base, std::vector<double> pcarb, double dt,
-                                std::vector<double> input_EI, std::vector<double> input_fat,
-                                double days, bool checkValues)
+                                std::vector<double> input_EI, std::vector<double> input_fat, double days,
+                                bool checkValues)
 {
-    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex),
-                 to_mat(EIchange), to_mat(NAchange),
-                 to_vec(PAL), to_vec(pcarb), to_vec(pcarb_base), dt,
-                 to_vec(input_EI), to_vec(input_fat), checkValues);
+    Adult Person(to_vec(bw), to_vec(ht), to_vec(age), to_vec(sex), to_mat(EIchange), to_mat(NAchange), to_vec(PAL),
+                 to_vec(pcarb), to_vec(pcarb_base), dt, to_vec(input_EI), to_vec(input_fat), checkValues);
     return Person.rk4(days);
 }
 
