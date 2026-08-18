@@ -4,12 +4,12 @@ Goal: a check is red on a pull request. Work out which layer broke and fix it.
 
 Three workflows run on every pull request:
 
-| Workflow | Job | Blocking |
-|---|---|---|
-| `Tests` (`.github/workflows/tests.yml`) | `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` | Yes |
-| `Format` (`.github/workflows/format.yml`) | `python` (ruff) | Yes |
-| `Format` | `cpp` (clang-format, cppcheck) | **No** — `continue-on-error: true` |
-| `Publish to CodeArtifact PyPI` | `publish` | Does not run on pull requests |
+| Workflow                                  | Job                                                 | Blocking                                                     |
+| ----------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| `Tests` (`.github/workflows/tests.yml`)   | `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` | Yes                                                          |
+| `Format` (`.github/workflows/format.yml`) | `python` (ruff)                                     | Yes                                                          |
+| `Format`                                  | `cpp` (clang-format, cppcheck)                      | clang-format **yes**; cppcheck no (step `continue-on-error`) |
+| `Publish to CodeArtifact PyPI`            | `publish`                                           | Does not run on pull requests                                |
 
 ## 0. Read the failure
 
@@ -22,13 +22,13 @@ gh run view <run-id> --log-failed
 `fail-fast: false` on the test matrix means all three OS legs always run — the pattern of
 which legs failed is the primary diagnostic signal.
 
-| Pattern | Read it as |
-|---|---|
-| All three legs fail | Python-level bug, or a genuine model/test change |
-| Both Linux legs fail, macOS green | GCC/libstdc++ vs Clang/libc++ — go to §2 |
+| Pattern                                | Read it as                                                          |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| All three legs fail                    | Python-level bug, or a genuine model/test change                    |
+| Both Linux legs fail, macOS green      | GCC/libstdc++ vs Clang/libc++ — go to §2                            |
 | One Linux leg fails (x86_64 xor arm64) | Architecture-specific: SIMD/FMA or an arch-conditional compile path |
-| macOS only | Clang-specific, or a libm difference in the golden values |
-| One Python version inside a leg | Go to §3 |
+| macOS only                             | Clang-specific, or a libm difference in the golden values           |
+| One Python version inside a leg        | Go to §3                                                            |
 
 ## 1. Tests workflow — anatomy
 
@@ -52,7 +52,7 @@ This is the workflow's stated reason for existing (`tests.yml:5`: "The Linux leg
 GCC/libstdc++ build"), and it has fired for real.
 
 **Precedent.** Commit `bf87e07`, "fix: remove duplicate NumericVector ctors for GCC compat".
-`class NumericVector` in `src/shim.hpp` declared `using std::vector<double>::vector;` *and*
+`class NumericVector` in `src/shim.hpp` declared `using std::vector<double>::vector;` _and_
 redeclared `NumericVector(size_t)` and `NumericVector(size_t, double)`. A call like
 `NumericVector(cols, 0.0)` with an `int` `cols` was then ambiguous between the inherited fill
 constructor and the redeclared one — both require the same `int -> size_t` conversion. GCC
@@ -67,7 +67,7 @@ reasoning is recorded in-source at `src/shim.hpp:45-56`.
 
 **Triage steps.**
 
-1. Confirm it is a *compile* error, not a test failure. Look for `error:` from `g++` in the
+1. Confirm it is a _compile_ error, not a test failure. Look for `error:` from `g++` in the
    CMake build output, before any pytest line.
 2. Reproduce on Linux — do not iterate through CI:
 
@@ -85,11 +85,11 @@ reasoning is recorded in-source at `src/shim.hpp:45-56`.
 
 **Rejected fixes** (both were considered and ruled out on the original issue):
 
-| Attempt | Why not |
-|---|---|
-| `-fpermissive` | This is a hard error, not a warning; the flag does not apply |
+| Attempt                          | Why not                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `-fpermissive`                   | This is a hard error, not a warning; the flag does not apply            |
 | Casting the argument to `size_t` | The ambiguity is by-value vs const-ref — both are already exact matches |
-| Dropping the Linux leg | The leg exists specifically to catch this class of bug |
+| Dropping the Linux leg           | The leg exists specifically to catch this class of bug                  |
 
 **Correct fix pattern:** prefer inherited constructors; do not redeclare overloads libstdc++
 also provides; avoid brace-init where a fill-vs-initializer-list ambiguity could arise.
@@ -103,11 +103,11 @@ language-version difference rather than an overload problem, that is the reason.
 Because tox drives the Python dimension, the failing environment shows up as a `py3xx`
 section inside an otherwise-normal job.
 
-| Cause | Signal | Fix |
-|---|---|---|
+| Cause                                                                      | Signal                                                                       | Fix                                                                                                              |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | No wheel / build failure for a new interpreter (3.14 is the usual suspect) | The failure is in a dependency install or the extension build, not in pytest | Wait for upstream wheels, or pin the dependency; do not silently drop the env from `env_list` without saying why |
-| Syntax or typing feature unavailable on 3.10 | `SyntaxError` / `TypeError` on import | Lower the construct, or raise the floor deliberately |
-| Deprecation turned error in a newer numpy/polars | `DeprecationWarning`-shaped `TypeError` in the failing env only | Fix the call site |
+| Syntax or typing feature unavailable on 3.10                               | `SyntaxError` / `TypeError` on import                                        | Lower the construct, or raise the floor deliberately                                                             |
+| Deprecation turned error in a newer numpy/polars                           | `DeprecationWarning`-shaped `TypeError` in the failing env only              | Fix the call site                                                                                                |
 
 Reproduce exactly:
 
@@ -142,35 +142,52 @@ Best avoided entirely: run `prek run --files <paths>` before committing. The
 `pre-commit-update` hook auto-bumps hook revisions, so if `.pre-commit-config.yaml` moves off
 `0.14.10` the pin in `format.yml` must be updated by hand in the same PR.
 
-## 5. `Format / cpp` — non-blocking today
+## 5. `Format / cpp` — clang-format blocking, cppcheck advisory
 
 The job runs:
 
 ```bash
-clang-format --dry-run --Werror --style=Google src/*.cpp src/*.hpp src/*.h
+uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
 cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
 ```
 
-under `continue-on-error: true` (`format.yml:30`). The header explains why: the ported `bw`
-sources are not Google-formatted, and the job is advisory "until a dedicated clang-format
-pass lands".
+**clang-format is blocking.** It checks only the two sources we own; the three upstream-derived
+files are excluded so they stay byte-identical to `bw`
+([ADR 0010](../adr/0010-scope-clang-format-to-owned-sources.md)). Style comes from `.clang-format`
+at the repository root, not from a `--style` flag.
 
-Consequences to hold in mind:
+**cppcheck is advisory** (`continue-on-error` at step level), because the apt version is not
+pinned and a runner-image bump can add diagnostics that are not a regression in our code. It
+passes clean today, so anything it reports is worth reading.
 
-- The check **reports green even when the commands fail**. You have to open the log.
-- It therefore also masks a genuine problem in newly written C++. If you touched
-  `src/shim.hpp` or `src/bindings.cpp`, open the log and read the findings for your files
-  specifically; ignore the noise on `adult_weight.cpp` / `energy_build.cpp`.
-- Known pre-existing warnings, reproducible with `c++ -std=c++17 -Wall -Wextra -fsyntax-only`:
-  `-Wreorder-ctor` at `src/shim.hpp:145` and `:221` (benign — both constructors initialise
-  `data` from the parameters, not the members), and `-Wsign-compare` at
-  `src/adult_weight.cpp:422` in the BMI classifier loop.
-- The step globs three patterns. If a category ever empties (for example the last `.hpp` is
-  removed), the glob goes unexpanded and clang-format errors on a literal path. Inferred, not
-  observed.
+### If clang-format fails
 
-To make it blocking: land a repo-wide clang-format pass plus a checked-in `.clang-format`,
-then remove `continue-on-error`. That is a deliberate decision, not a drive-by change.
+Reproduce and fix it in one step — same pin as CI, so the result is identical:
+
+```bash
+uvx clang-format@22.1.8 -i src/shim.hpp src/bindings.cpp
+```
+
+Or let the hook do it: `prek run clang-format --all-files`.
+
+If it fails in CI but passes locally, your local binary is a different major version —
+clang-format's output changes between them. Use the `uvx` form above rather than a
+system `clang-format`.
+
+### If you added a first-party C++ file
+
+It is **not** checked until you add it to both `.github/workflows/format.yml` and
+`.pre-commit-config.yaml`. Nothing detects the omission — this is the known cost of the
+explicit file list, recorded in ADR 0010.
+
+### Known warnings that are not regressions
+
+Reproducible with `c++ -std=c++17 -Wall -Wextra -fsyntax-only`: `-Wreorder-ctor` in
+`src/shim.hpp` (benign — both constructors initialise `data` from the parameters, not the
+members), and `-Wsign-compare` at `src/adult_weight.cpp:422` in the BMI classifier loop.
+Neither is reported by `cppcheck` and neither is in a file we format.
+
+Remaining work: pin `cppcheck` and make it blocking too — roadmap task 3.4.
 
 ## 6. A numerical regression test fails
 
@@ -179,12 +196,12 @@ change, or platform floating-point drift?**
 
 The tolerances encode the intended answer:
 
-| Test | Tolerance | Rationale |
-|---|---|---|
-| Golden final weights (`test_adult_weight.py:23-32`) | `PHYS_RTOL = 1e-4` | "Loose enough for cross-platform libm/FMA differences, tight enough that a real model regression (order 0.1 kg+) fails" |
-| No-intake-change baseline | `atol=1e-6` against 80.0 | Analytically exact |
-| `energy_build` Linear | `rtol=1e-9` | Analytic |
-| Brownian | none — seed reproducibility and seed variance only | `std::normal_distribution` is implementation-defined and not portable across standard libraries |
+| Test                                                | Tolerance                                          | Rationale                                                                                                               |
+| --------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Golden final weights (`test_adult_weight.py:23-32`) | `PHYS_RTOL = 1e-4`                                 | "Loose enough for cross-platform libm/FMA differences, tight enough that a real model regression (order 0.1 kg+) fails" |
+| No-intake-change baseline                           | `atol=1e-6` against 80.0                           | Analytically exact                                                                                                      |
+| `energy_build` Linear                               | `rtol=1e-9`                                        | Analytic                                                                                                                |
+| Brownian                                            | none — seed reproducibility and seed variance only | `std::normal_distribution` is implementation-defined and not portable across standard libraries                         |
 
 ### Decision procedure
 
@@ -218,13 +235,13 @@ The tolerances encode the intended answer:
 
 5. **Act.**
 
-   | Conclusion | Action |
-   |---|---|
-   | Real model change, intended | Re-capture the goldens, and say in the PR which platform and toolchain produced them. The current goldens' provenance is undocumented — do not repeat that |
-   | Real model change, unintended | Fix the code. Do not widen `PHYS_RTOL` to make it pass |
-   | Platform drift, single leg, grams | Do **not** re-capture. Document the observation. Widening the tolerance blunts the test's stated purpose, so treat it as a decision to record, not a quick fix |
-   | Brownian values differ across platforms | Expected and already documented (`test_energy_build.py:1-7`). Never pin Brownian values |
+   | Conclusion                              | Action                                                                                                                                                         |
+   | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Real model change, intended             | Re-capture the goldens, and say in the PR which platform and toolchain produced them. The current goldens' provenance is undocumented — do not repeat that     |
+   | Real model change, unintended           | Fix the code. Do not widen `PHYS_RTOL` to make it pass                                                                                                         |
+   | Platform drift, single leg, grams       | Do **not** re-capture. Document the observation. Widening the tolerance blunts the test's stated purpose, so treat it as a decision to record, not a quick fix |
+   | Brownian values differ across platforms | Expected and already documented (`test_energy_build.py:1-7`). Never pin Brownian values                                                                        |
 
 Determinism is easy to confirm — `adult_weight` uses no RNG at all
 (`test_adult_weight.py:56-59` asserts two identical calls return identical arrays). If a
-result is non-deterministic *within* a process, that is a genuine bug, not drift.
+result is non-deterministic _within_ a process, that is a genuine bug, not drift.

@@ -26,17 +26,17 @@ pybind11, and we leave `src/adult_weight.cpp` and `src/energy_build.cpp` as the 
 `shim.hpp` includes only `<vector> <string> <cmath> <algorithm> <iostream> <random>` and pybind11
 headers — no `Rcpp.h`. What it provides:
 
-| Rcpp construct | Shim replacement | Location |
-|---|---|---|
-| `NumericVector` | `class NumericVector : public std::vector<double>` with `operator()` and implicit `py::object` conversion | `src/shim.hpp:46-66` |
-| Vectorised `+ - * /` | `DEF_OP` macro over `std::plus`/`minus`/`multiplies`/`divides` | `src/shim.hpp:105-113` |
-| `pow`, `exp`, `log` | element-wise free functions | `src/shim.hpp:115-135` |
-| `NumericMatrix` | flat `std::vector<double>` + `rows`/`cols`, row slice by value, column proxy | `src/shim.hpp:138-204` |
-| `Rcpp::_` | empty `struct Slice`, `static const Slice _` | `src/shim.hpp:15-18` |
-| `StringVector`/`StringMatrix` | `std::vector<std::string>` wrappers | `src/shim.hpp:207-246` |
-| `Named(...)`, `List::create(...)` | `NamedBuilder` + variadic `List::create` over `py::dict` | `src/shim.hpp:249-286` |
-| `R::rnorm` | `std::normal_distribution` over a shared `std::mt19937` | `src/shim.hpp:22-43, 69-74` |
-| `Rcout` | `#define Rcout std::cout` | `src/shim.hpp:288` |
+| Rcpp construct                    | Shim replacement                                                                                          | Location                    |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `NumericVector`                   | `class NumericVector : public std::vector<double>` with `operator()` and implicit `py::object` conversion | `src/shim.hpp:46-66`        |
+| Vectorised `+ - * /`              | `DEF_OP` macro over `std::plus`/`minus`/`multiplies`/`divides`                                            | `src/shim.hpp:105-113`      |
+| `pow`, `exp`, `log`               | element-wise free functions                                                                               | `src/shim.hpp:115-135`      |
+| `NumericMatrix`                   | flat `std::vector<double>` + `rows`/`cols`, row slice by value, column proxy                              | `src/shim.hpp:138-204`      |
+| `Rcpp::_`                         | empty `struct Slice`, `static const Slice _`                                                              | `src/shim.hpp:15-18`        |
+| `StringVector`/`StringMatrix`     | `std::vector<std::string>` wrappers                                                                       | `src/shim.hpp:207-246`      |
+| `Named(...)`, `List::create(...)` | `NamedBuilder` + variadic `List::create` over `py::dict`                                                  | `src/shim.hpp:249-286`      |
+| `R::rnorm`                        | `std::normal_distribution` over a shared `std::mt19937`                                                   | `src/shim.hpp:22-43, 69-74` |
+| `Rcout`                           | `#define Rcout std::cout`                                                                                 | `src/shim.hpp:288`          |
 
 ### Sub-decision: process-wide RNG with an exposed `set_seed`
 
@@ -49,11 +49,11 @@ reproducible only within a process and only after an explicit `set_seed`.
 
 ## Alternatives considered
 
-| Alternative | Why not chosen |
-|---|---|
-| Rewrite the model sources against pybind11 directly | Every future upstream change would then have to be re-applied by hand against a diverged file, and any numerical difference would be ours to explain. Keeping the sources unchanged makes a regression attributable to the shim or the bindings, never to the model. |
-| Depend on Rcpp headers without R | Rcpp's types are bound to R's memory model (`SEXP`, protection stack); there is no header-only subset that works outside R. |
-| Rewrite the model in terms of Eigen/xtensor and drop the R idioms | Same objection as the first row, plus a new third-party dependency. Not evidenced as considered. |
+| Alternative                                                       | Why not chosen                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rewrite the model sources against pybind11 directly               | Every future upstream change would then have to be re-applied by hand against a diverged file, and any numerical difference would be ours to explain. Keeping the sources unchanged makes a regression attributable to the shim or the bindings, never to the model. |
+| Depend on Rcpp headers without R                                  | Rcpp's types are bound to R's memory model (`SEXP`, protection stack); there is no header-only subset that works outside R.                                                                                                                                          |
+| Rewrite the model in terms of Eigen/xtensor and drop the R idioms | Same objection as the first row, plus a new third-party dependency. Not evidenced as considered.                                                                                                                                                                     |
 
 ## Consequences
 
@@ -71,9 +71,10 @@ Negative:
   had already drifted in comments and were brought back toward upstream later. `src/energy_build.cpp`
   also necessarily differs in its includes (`#include "shim.hpp"`). Read the claim as "identical in
   code, drifted in comments".
-- **Unchanged upstream sources cannot be reformatted**, so `clang-format --style=Google` can never be
-  made blocking on them without abandoning this ADR. That is exactly why the `cpp` job in
-  `.github/workflows/format.yml:30` is `continue-on-error: true`. Compiler warnings in upstream code
+- **Unchanged upstream sources cannot be reformatted**, so a formatting check can never be made
+  blocking over all of `src/` without abandoning this ADR. This was originally handled by marking the
+  whole `cpp` job `continue-on-error: true`; it is now handled by naming only the files we own —
+  see [ADR 0010](0010-scope-clang-format-to-owned-sources.md). Compiler warnings in upstream code
   (e.g. the signed/unsigned comparison at `src/adult_weight.cpp:422`) are likewise left alone.
 - **The shim is a single point of portability failure**, and it has already failed once — see
   ADR 0007 and `src/shim.hpp:49-55`.
@@ -102,4 +103,5 @@ Negative:
 - `75b1c37` (2025-12-22, PR #3) re-adds upstream MIT headers and comments.
 - `src/shim.hpp:1-11` (includes), `:15-18`, `:22-43`, `:46-66`, `:105-135`, `:138-204`, `:249-288`.
 - `README.md` "Implementation details" table — which files are new and which are upstream.
-- `.github/workflows/format.yml:29-38` — non-blocking clang-format/cppcheck.
+- `.github/workflows/format.yml` — the `cpp` job; originally non-blocking over all of `src/`, now
+  clang-format blocking over the owned sources only ([ADR 0010](0010-scope-clang-format-to-owned-sources.md)).

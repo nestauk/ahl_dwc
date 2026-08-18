@@ -81,6 +81,11 @@ date** — if you find yourself wanting to record an older decision under a high
 explicitly in the file rather than breaking the sequence. The first three themes all date from
 2025-11-20 and are therefore ordered by number within that day.
 
+Themes are ordered by their **first** decision, so once a theme gains a later ADR its date range can
+overlap the themes below it — "Quality and verification" now runs to 2026-08-18 while "Release and
+distribution" below it still sits at 2026-07-09. The alternative, reshuffling themes every time one
+gains an entry, would make the numbering unstable for no gain.
+
 ### Core architecture — how the model gets into Python at all
 
 The two decisions everything else rests on: compile upstream's C++ rather than rewrite it, and
@@ -112,13 +117,15 @@ The one decision that adds a runtime dependency consumers inherit, rather than s
 
 ### Quality and verification — how we know it is right, and on which platforms
 
-The 2026-07-09 hardening pass: a test suite where there was none, and a matrix that compiles the
-shim on the toolchains that had already diverged.
+The 2026-07-09 hardening pass — a test suite where there was none, and a matrix that compiles the
+shim on the toolchains that had already diverged — plus the 2026-08-18 follow-up that made the
+static-analysis job satisfiable. 2026-07-09 to 2026-08-18.
 
 | #                                                        | Title                                                                                  | Status              | Date       |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------- | ---------- |
 | [0006](0006-test-strategy-unit-regression-tolerances.md) | Test strategy: unit/regression split, `PHYS_RTOL = 1e-4`, Brownian pinned by seed only | accepted            | 2026-07-09 |
 | [0007](0007-multiplatform-ci-and-gcc-compat.md)          | Multiplatform CI via tox-uv, and the GCC/libstdc++ compatibility fix                   | accepted (unmerged) | 2026-07-09 |
+| [0010](0010-scope-clang-format-to-owned-sources.md)      | Scope clang-format to the sources we own, and make the check blocking                  | accepted (unmerged) | 2026-08-18 |
 
 ### Release and distribution — how it reaches consumers
 

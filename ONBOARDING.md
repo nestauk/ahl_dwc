@@ -132,9 +132,12 @@ See `examples/reproduce_bw_vignette.py` for a fuller worked example with plots.
 
 - **Lint/format:** `ruff` (line-length 120, Google docstring convention).
   `ruff check` and `ruff format --check` are **blocking** in CI.
-- **C/C++ checks:** `clang-format` (Google style) + `cppcheck` run in CI but are
-  **non-blocking** (`continue-on-error`) for now — they surface issues on the
-  ported code without failing the build until a dedicated clang-format pass lands.
+- **C/C++ checks:** `clang-format` is **blocking**, pinned to 22.1.8, and runs over
+  `src/shim.hpp` and `src/bindings.cpp` only — style in `.clang-format` at the root.
+  The three upstream-derived files are deliberately excluded to keep them
+  byte-identical; see [ADR 0010](docs/adr/0010-scope-clang-format-to-owned-sources.md).
+  `cppcheck` still covers all of `src/` but stays **advisory** until its version is
+  pinned too.
 - **pre-commit** (`.pre-commit-config.yaml`): ruff-format/check, standard hygiene
   hooks, `nbstripout`/`jupytext` pairing, prettier, and `no-commit-to-branch`
   for `dev`/`main`. Run `prek run --all-files` before pushing (`prek`, not `pre-commit`).
@@ -147,7 +150,7 @@ See `examples/reproduce_bw_vignette.py` for a fuller worked example with plots.
 | Workflow                   | Trigger                                   | What it does                                                                                                                                                                                                                 |
 | -------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests.yml`                | push to `main`, PRs                       | OS matrix (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`) x Python 3.10-3.14 driven by `tox-uv`. Linux legs guard the GCC/libstdc++ build.                                                                             |
-| `format.yml`               | push to `main`, PRs                       | `ruff` check + format (blocking); `clang-format` + `cppcheck` (non-blocking).                                                                                                                                                |
+| `format.yml`               | push to `main`, PRs                       | `ruff` check + format (blocking); `clang-format` over the two owned sources (blocking, pinned 22.1.8); `cppcheck` over all of `src/` (advisory).                                                                             |
 | `publish-codeartifact.yml` | GitHub Release published; manual dispatch | `uv build` compiles a platform wheel + sdist, authenticates to AWS via **OIDC** (no long-lived keys), mints a short-lived CodeArtifact token, and `uv publish`es to the private CodeArtifact PyPI. Pre-releases are skipped. |
 
 Two things to know before you touch the publish workflow:

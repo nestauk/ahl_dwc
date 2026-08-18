@@ -33,9 +33,9 @@ grep -c codeartifact uv.lock      # expect: 0
 ```
 
 Then confirm on GitHub that all three `Tests` legs (`ubuntu-latest`, `ubuntu-24.04-arm`,
-`macos-latest`) and the blocking `Format / python` job are green on the merge commit. The
-`Format / cpp` job is `continue-on-error: true` and reports green regardless — open its log
-if you care about the findings.
+`macos-latest`) and both blocking `Format` checks — `python` and the clang-format step of
+`cpp` — are green on the merge commit. The `cppcheck` step is advisory, so open its log if
+you care about the findings.
 
 Bump the version:
 
@@ -70,23 +70,23 @@ Do **not** tick "This is a pre-release" if you want it published — see step 6.
 
 ## 4. What the workflow does
 
-| Step | Detail |
-|---|---|
-| 1 | `actions/checkout@v4` at `github.event.inputs.tag \|\| github.event.release.tag_name` |
-| 2 | `astral-sh/setup-uv@v6`, cache enabled |
-| 3 | `uv build` — compiles the extension, emits sdist + one linux/x86_64 wheel into `dist/` |
-| 4 | Build-provenance attestation — **commented out**, though `attestations: write` is still granted |
-| 5 | `aws-actions/configure-aws-credentials@v4` assumes `secrets.AWS_ROLE_ARN` via GitHub OIDC (`id-token: write`); no long-lived keys |
-| 6 | `aws codeartifact get-authorization-token`, masked with `::add-mask::` |
-| 7 | `uv publish` with `UV_PUBLISH_USERNAME: aws` and a `UV_PUBLISH_URL` assembled from secrets/vars |
+| Step | Detail                                                                                                                            |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `actions/checkout@v4` at `github.event.inputs.tag \|\| github.event.release.tag_name`                                             |
+| 2    | `astral-sh/setup-uv@v6`, cache enabled                                                                                            |
+| 3    | `uv build` — compiles the extension, emits sdist + one linux/x86_64 wheel into `dist/`                                            |
+| 4    | Build-provenance attestation — **commented out**, though `attestations: write` is still granted                                   |
+| 5    | `aws-actions/configure-aws-credentials@v4` assumes `secrets.AWS_ROLE_ARN` via GitHub OIDC (`id-token: write`); no long-lived keys |
+| 6    | `aws codeartifact get-authorization-token`, masked with `::add-mask::`                                                            |
+| 7    | `uv publish` with `UV_PUBLISH_USERNAME: aws` and a `UV_PUBLISH_URL` assembled from secrets/vars                                   |
 
 Repository configuration it depends on (values are secrets and deliberately absent from
 the repo — do not document the real ones):
 
-| Kind | Name |
-|---|---|
-| Secret | `AWS_ROLE_ARN`, `AWS_CA_DOMAIN`, `AWS_CA_REPO`, `AWS_ACCOUNT_ID` |
-| Variable | `AWS_REGION` |
+| Kind     | Name                                                             |
+| -------- | ---------------------------------------------------------------- |
+| Secret   | `AWS_ROLE_ARN`, `AWS_CA_DOMAIN`, `AWS_CA_REPO`, `AWS_ACCOUNT_ID` |
+| Variable | `AWS_REGION`                                                     |
 
 The AWS side (role trust policy conditioned on `repo:nestauk/ahl_dwc:*`, plus
 `codeartifact:GetAuthorizationToken`, `PublishPackageVersion`, `PutPackageMetadata`,
@@ -178,13 +178,13 @@ you want for a release.
 
 ## Failure branches
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Publish job shows as skipped | Release marked pre-release | Intended. Publish a normal Release, or dispatch manually (understanding step 6) |
-| Workflow never triggered | Tag pushed but no Release published | `gh release create <tag>` |
-| `uv build` fails at the CMake step | Toolchain or build-requirement resolution problem on the runner | Reproduce with `uv build` locally; see `docs/runbooks/local-development.md` |
-| 401/403 immediately at `uv publish` | Almost always OIDC trust or IAM policy, not token expiry — the token is minted seconds earlier | Check the role's trust condition on `repo:nestauk/ahl_dwc:*` and the `PublishPackageVersion` permission |
-| 401/403 locally, hours into a session | CodeArtifact tokens are short-lived (12 hours by default; the workflow passes no `--duration-seconds`) | Re-mint the token. Username must be `aws`, never `__token__` |
-| 409 / "version already exists" | That version is already in CodeArtifact | Bump the version; see step 8 |
-| Published version number is wrong | Tag and `pyproject.toml` disagreed; nothing cross-checks them | Bump and re-release; add the `git show <tag>:pyproject.toml` check to your habit |
-| Consumer install fails to build on macOS/arm | Only a linux/x86_64 wheel exists; they are compiling the sdist | Ensure they have a compiler and CMake, or move the build step to cibuildwheel |
+| Symptom                                      | Cause                                                                                                  | Fix                                                                                                     |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Publish job shows as skipped                 | Release marked pre-release                                                                             | Intended. Publish a normal Release, or dispatch manually (understanding step 6)                         |
+| Workflow never triggered                     | Tag pushed but no Release published                                                                    | `gh release create <tag>`                                                                               |
+| `uv build` fails at the CMake step           | Toolchain or build-requirement resolution problem on the runner                                        | Reproduce with `uv build` locally; see `docs/runbooks/local-development.md`                             |
+| 401/403 immediately at `uv publish`          | Almost always OIDC trust or IAM policy, not token expiry — the token is minted seconds earlier         | Check the role's trust condition on `repo:nestauk/ahl_dwc:*` and the `PublishPackageVersion` permission |
+| 401/403 locally, hours into a session        | CodeArtifact tokens are short-lived (12 hours by default; the workflow passes no `--duration-seconds`) | Re-mint the token. Username must be `aws`, never `__token__`                                            |
+| 409 / "version already exists"               | That version is already in CodeArtifact                                                                | Bump the version; see step 8                                                                            |
+| Published version number is wrong            | Tag and `pyproject.toml` disagreed; nothing cross-checks them                                          | Bump and re-release; add the `git show <tag>:pyproject.toml` check to your habit                        |
+| Consumer install fails to build on macOS/arm | Only a linux/x86_64 wheel exists; they are compiling the sdist                                         | Ensure they have a compiler and CMake, or move the build step to cibuildwheel                           |
