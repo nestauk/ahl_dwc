@@ -1,0 +1,25 @@
+# C/C++ formatting for this repository.
+#
+# Based on Google style, with two deliberate departures that match the code as
+# it is actually written here and in upstream INSP-RH/bw:
+#
+#   BreakBeforeBraces: Allman   — the ported sources use Allman braces
+#                                 throughout; Google's attached braces would
+#                                 rewrite every function in the tree.
+#   ColumnLimit: 120            — matches the Python line length in
+#                                 pyproject.toml, and avoids rewrapping the
+#                                 model's long parameter lists.
+#
+# Only the files we own are checked in CI — see .github/workflows/format.yml.
+# src/adult_weight.cpp and src/energy_build.cpp are byte-identical to upstream
+# and are deliberately not formatted; see docs/adr/0002-isolate-rcpp-behind-shim.md.
+---
+Language: Cpp
+BasedOnStyle: Google
+BreakBeforeBraces: Allman
+ColumnLimit: 120
+AccessModifierOffset: -4
+IndentWidth: 4
+DerivePointerAlignment: false
+PointerAlignment: Right
+SortIncludes: false

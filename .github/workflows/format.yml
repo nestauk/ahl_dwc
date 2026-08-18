@@ -1,9 +1,11 @@
 name: Format
 
-# Static checks for both the Python and C/C++ sources. Python (ruff) is
-# blocking; the C/C++ checks are non-blocking for now (they surface issues
-# without failing the build on the ported code's pre-existing formatting) until
-# a dedicated clang-format pass lands.
+# Static checks for both the Python and C/C++ sources.
+#
+# Python (ruff) is blocking. clang-format is now blocking too, but only over
+# the sources we own — src/shim.hpp and src/bindings.cpp — because the rest of
+# src/ is kept byte-identical to upstream INSP-RH/bw. cppcheck runs over all of
+# src/ and is advisory until its version is pinned.
 on:
   push:
     branches: [main]
@@ -27,12 +29,25 @@ jobs:
 
   cpp:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Install clang-format + cppcheck
-        run: sudo apt-get update && sudo apt-get install -y clang-format cppcheck
-      - name: clang-format (dry-run, Google style)
-        run: clang-format --dry-run --Werror --style=Google src/*.cpp src/*.hpp src/*.h
+      - uses: astral-sh/setup-uv@v6
+      # Only the sources we own are formatted. src/adult_weight.{h,cpp} and
+      # src/energy_build.cpp are kept byte-identical to upstream INSP-RH/bw so
+      # upstream fixes can be pulled in without a merge — formatting them would
+      # forfeit that. See docs/adr/0002-isolate-rcpp-behind-shim.md.
+      #
+      # Version-pinned for the same reason ruff is: clang-format's output
+      # changes between major versions, so an unpinned binary would fail this
+      # check on a runner-image bump alone. Style lives in .clang-format.
+      - name: clang-format (dry-run)
+        run: uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      # Advisory: the apt version is not pinned, so a runner-image bump can
+      # introduce new diagnostics that are not a regression in our code.
+      # Passing clean under cppcheck 2.21 locally — promote to blocking once
+      # the CI version is pinned too.
       - name: cppcheck
+        continue-on-error: true
         run: cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
