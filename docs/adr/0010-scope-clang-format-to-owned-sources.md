@@ -45,7 +45,15 @@ Scope the formatting check to the two files this project owns, and make it block
   `pre-commit` hook is added at the same pin, restricted to the same two files.
 - **Drop job-level `continue-on-error`**, so a formatting regression in first-party C++ fails the
   build.
-- **Keep `cppcheck` advisory** at *step* level, still running over all of `src/`.
+- **Pin `cppcheck` and make it blocking too**, still running over all of `src/`. It comes from PyPI
+  via `uvx --from cppcheck==1.5.1` (Cppcheck 2.17.1), not from apt: the apt install wedged for over
+  an hour on three separate CI runs and offers no version guarantee either. `--check-level=exhaustive`
+  is set because otherwise cppcheck emits an informational `normalCheckLevelMaxBranches` notice on
+  `energy_build.cpp` that `--error-exitcode` counts as a failure; analysing every branch is the
+  honest fix, suppressing the notice is not.
+
+  Analysing the upstream sources is not in tension with keeping them byte-identical — cppcheck reads,
+  it does not rewrite. That is why its scope is all of `src/` while clang-format's is two files.
 
 ## Alternatives considered
 
@@ -55,7 +63,7 @@ and forfeits the byte-identical property, which is the mechanism
 cheap. This is the obvious fix and the one to guard against.
 
 **Pin the exact upstream commit of each vendored file and diff against it in CI, then format
-everything.** Floated as item (c3) in [`rust-port.md`](../rust-port.md). Rejected *for now* on cost,
+everything.** Floated as item (c3) in [`rust-port.md`](../rust-port.md). Rejected _for now_ on cost,
 not on merit: it needs a per-file provenance record and a CI job to enforce it, which is more
 machinery than the problem currently justifies. It remains the better answer if the number of
 vendored files grows, and it is the alternative to revisit if the explicit file list starts drifting
@@ -65,12 +73,18 @@ from reality.
 fixing the underlying property that nobody is ever required to read the output. The `cppcheck`
 warnings above are the evidence that advisory checks do not get read.
 
+**Install `cppcheck` from apt, pinned with `apt-get install cppcheck=<version>`.** Rejected on
+reliability rather than on pinning: the apt path wedged for over an hour on three separate runs
+before this ADR was finalised, which is what forced the move off it. Ubuntu also carries only the
+version in its archive for a given release, so the pin would be dictated by the runner image rather
+than chosen.
+
 **Use raw Google style on the two owned files.** Rejected on diff size. Measured before choosing:
 
-| File | Violations under raw Google | Under this `.clang-format` |
-|---|---|---|
-| `src/shim.hpp` | 299 | 38 |
-| `src/bindings.cpp` | 64 | 15 |
+| File               | Violations under raw Google | Under this `.clang-format` |
+| ------------------ | --------------------------- | -------------------------- |
+| `src/shim.hpp`     | 299                         | 38                         |
+| `src/bindings.cpp` | 64                          | 15                         |
 
 Raw Google would have meant a ~300-line rewrite of the load-bearing shim for no behavioural gain.
 
@@ -92,14 +106,22 @@ Raw Google would have meant a ~300-line rewrite of the load-bearing shim for no 
   that notices the omission. This is the direct cost of choosing the cheap exemption over (c3).
 - **Two pins to keep in step**, `format.yml` and `.pre-commit-config.yaml`, with nothing enforcing
   that they match — the same duplication that already exists for ruff.
-- **`cppcheck` is still advisory**, so its findings can accumulate unread again. It should become
-  blocking once its version is pinned; until then this ADR only half-solves the problem it diagnoses.
-- The upstream files remain unformatted and unchecked, so genuine defects in them are found only by
-  upstream or by the test suite.
+- **Two more pinned versions to maintain** — `clang-format@22.1.8` and `cppcheck==1.5.1` — each of
+  which will eventually need a deliberate bump, and each of which can surface a batch of new
+  diagnostics when bumped. That is the price of not being at the mercy of a runner image, but it is
+  a real maintenance obligation rather than a free win.
+- **`uvx` is now on the critical path for the C/C++ checks.** Both tools are fetched from PyPI at job
+  time, so a PyPI outage fails the `cpp` job. This replaces a dependency on apt with a dependency on
+  PyPI; the argument for it is that the apt path demonstrably wedged three times in one day, not
+  that PyPI is infallible.
+- The upstream files remain **unformatted**, though not unanalysed: `cppcheck` covers them. A
+  formatting defect there is invisible to CI by design, and a `cppcheck` finding in one of them
+  cannot be fixed locally without breaking byte-identity — it has to go upstream.
 
 **Supersedes part of ADR 0007.** That ADR records "C/C++ static checks are added but non-blocking" as
-an accepted consequence. That is no longer true for clang-format. ADR 0007 keeps its number and its
-status; a pointer to this ADR has been added to the relevant consequence.
+an accepted consequence. That is no longer true of either check: clang-format and cppcheck both
+block, and both are version-pinned. ADR 0007 keeps its number and its status; a pointer to this ADR
+has been added to the relevant consequence.
 
 ## Evidence
 

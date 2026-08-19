@@ -2,10 +2,14 @@ name: Format
 
 # Static checks for both the Python and C/C++ sources.
 #
-# Python (ruff) is blocking. clang-format is now blocking too, but only over
-# the sources we own — src/shim.hpp and src/bindings.cpp — because the rest of
-# src/ is kept byte-identical to upstream INSP-RH/bw. cppcheck runs over all of
-# src/ and is advisory until its version is pinned.
+# All three checks block, and all three are version-pinned so that a runner
+# image or upstream release cannot turn them red on its own.
+#
+# Python: ruff, pinned to 0.14.10.
+# C/C++:  clang-format 22.1.8 over src/shim.hpp and src/bindings.cpp only —
+#         the rest of src/ is kept byte-identical to upstream INSP-RH/bw.
+#         cppcheck 2.17.1 over all of src/, since analysis does not modify the
+#         sources and so does not threaten that byte-identity.
 on:
   push:
     branches: [main]
@@ -42,21 +46,24 @@ jobs:
       # check on a runner-image bump alone. Style lives in .clang-format.
       - name: clang-format (dry-run)
         run: uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
-      # Both cppcheck steps are advisory AND time-boxed. The apt install has
-      # wedged for over an hour on three separate runs, and without these
-      # guards it takes the whole job — including the blocking clang-format
-      # result above — down with it. clang-format runs first for the same
-      # reason: the check that gates the merge must not depend on apt.
-      - name: Install cppcheck
-        continue-on-error: true
-        timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cppcheck
-      # Advisory: the apt version is not pinned, so a runner-image bump can
-      # introduce new diagnostics that are not a regression in our code.
-      # Passing clean under cppcheck 2.21 locally — promote to blocking once
-      # the CI version is pinned and installed from something other than apt
-      # (roadmap task 3.4).
+      # cppcheck is pinned and blocking, for the same two reasons as
+      # clang-format above.
+      #
+      # Pinned: an unpinned checker fails the build on a version bump alone,
+      # with no change to our code. It comes from PyPI via uvx rather than apt
+      # — the apt install wedged for over an hour on three separate runs and
+      # has no version guarantee either way.
+      #
+      # --check-level=exhaustive analyses every branch. Without it cppcheck
+      # emits an informational normalCheckLevelMaxBranches notice on
+      # energy_build.cpp, which --error-exitcode counts as a failure. Analysing
+      # properly is the honest fix; suppressing the notice is not.
       - name: cppcheck
-        continue-on-error: true
         timeout-minutes: 5
-        run: cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
+        run: >
+          uvx --from cppcheck==1.5.1 cppcheck
+          --enable=warning,portability
+          --check-level=exhaustive
+          --suppress=missingIncludeSystem
+          --error-exitcode=1
+          src/

@@ -66,10 +66,10 @@ carried two further decisions:
   the build on the ported code's pre-existing formatting … until a dedicated clang-format pass
   lands". Python ruff stays blocking, pinned to `0.14.10` to match `.pre-commit-config.yaml`.
 
-  > **Superseded for clang-format** by [ADR 0010](0010-scope-clang-format-to-owned-sources.md).
-  > That pass has now landed: clang-format is pinned, scoped to `shim.hpp` and `bindings.cpp`, and
-  > blocking. `cppcheck` remains advisory. This ADR keeps its number and status; only this
-  > consequence is out of date.
+  > **Superseded** by [ADR 0010](0010-scope-clang-format-to-owned-sources.md). Both checks now
+  > block and both are version-pinned: clang-format 22.1.8 over `shim.hpp` and `bindings.cpp`,
+  > cppcheck 2.17.1 over all of `src/`, neither installed from apt. This ADR keeps its number and
+  > status; only this consequence is out of date.
 
 **3. Sequence the two changes separately.** Issue #7 records that the C++ change was "Deferred out of
 the matrix-CI work so that C++ source changes are reviewed separately from CI config" — hence PR #8
