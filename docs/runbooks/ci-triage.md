@@ -4,12 +4,12 @@ Goal: a check is red on a pull request. Work out which layer broke and fix it.
 
 Three workflows run on every pull request:
 
-| Workflow                                  | Job                                                 | Blocking                                                     |
-| ----------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
-| `Tests` (`.github/workflows/tests.yml`)   | `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` | Yes                                                          |
-| `Format` (`.github/workflows/format.yml`) | `python` (ruff)                                     | Yes                                                          |
-| `Format`                                  | `cpp` (clang-format, cppcheck)                      | clang-format **yes**; cppcheck no (step `continue-on-error`) |
-| `Publish to CodeArtifact PyPI`            | `publish`                                           | Does not run on pull requests                                |
+| Workflow                                  | Job                                                 | Blocking                                |
+| ----------------------------------------- | --------------------------------------------------- | --------------------------------------- |
+| `Tests` (`.github/workflows/tests.yml`)   | `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` | Yes                                     |
+| `Format` (`.github/workflows/format.yml`) | `python` (ruff)                                     | Yes                                     |
+| `Format`                                  | `cpp` (clang-format, cppcheck)                      | **Yes** — both, and both version-pinned |
+| `Publish to CodeArtifact PyPI`            | `publish`                                           | Does not run on pull requests           |
 
 ## 0. Read the failure
 
@@ -142,23 +142,24 @@ Best avoided entirely: run `prek run --files <paths>` before committing. The
 `pre-commit-update` hook auto-bumps hook revisions, so if `.pre-commit-config.yaml` moves off
 `0.14.10` the pin in `format.yml` must be updated by hand in the same PR.
 
-## 5. `Format / cpp` — clang-format blocking, cppcheck advisory
+## 5. `Format / cpp` — both checks blocking
 
-The job runs:
+The job runs exactly this, and nothing else — no apt, no system tools:
 
 ```bash
 uvx clang-format@22.1.8 --dry-run --Werror src/shim.hpp src/bindings.cpp
-cppcheck --enable=warning,portability --suppress=missingIncludeSystem --error-exitcode=1 src/
+uvx --from cppcheck==1.5.1 cppcheck --enable=warning,portability \
+  --check-level=exhaustive --suppress=missingIncludeSystem --error-exitcode=1 src/
 ```
 
-**clang-format is blocking.** It checks only the two sources we own; the three upstream-derived
-files are excluded so they stay byte-identical to `bw`
-([ADR 0010](../adr/0010-scope-clang-format-to-owned-sources.md)). Style comes from `.clang-format`
-at the repository root, not from a `--style` flag.
+Both are blocking and both are version-pinned, so a runner-image bump cannot turn either red on
+its own. Copy either line to reproduce a CI failure exactly.
 
-**cppcheck is advisory** (`continue-on-error` at step level), because the apt version is not
-pinned and a runner-image bump can add diagnostics that are not a regression in our code. It
-passes clean today, so anything it reports is worth reading.
+**Different scopes, deliberately.** clang-format checks only the two sources we own, because the
+three upstream-derived files must stay byte-identical to `bw`
+([ADR 0010](../adr/0010-scope-clang-format-to-owned-sources.md)). cppcheck checks all of `src/` —
+analysis reads without rewriting, so it does not threaten that. Style comes from `.clang-format`
+at the repository root, not from a `--style` flag.
 
 ### If clang-format fails
 
@@ -187,7 +188,16 @@ Reproducible with `c++ -std=c++17 -Wall -Wextra -fsyntax-only`: `-Wreorder-ctor`
 members), and `-Wsign-compare` at `src/adult_weight.cpp:422` in the BMI classifier loop.
 Neither is reported by `cppcheck` and neither is in a file we format.
 
-Remaining work: pin `cppcheck` and make it blocking too — roadmap task 3.4.
+### If cppcheck fails
+
+Reproduce with the pinned command above. Two things to check before assuming a regression:
+
+- **Is it in an upstream file?** `adult_weight.{h,cpp}` and `energy_build.cpp` cannot be edited
+  to satisfy a checker — see the upstream C++ rule in `CONTRIBUTING.md`. A genuine finding there
+  goes upstream to `INSP-RH/bw`; a false positive gets a targeted `--suppress`.
+- **Did you drop `--check-level=exhaustive`?** Without it cppcheck emits an informational
+  `normalCheckLevelMaxBranches` notice on `energy_build.cpp`, and `--error-exitcode=1` counts
+  that as a failure. The flag is not optional decoration.
 
 ## 6. A numerical regression test fails
 

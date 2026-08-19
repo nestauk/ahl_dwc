@@ -33,9 +33,9 @@ grep -c codeartifact uv.lock      # expect: 0
 ```
 
 Then confirm on GitHub that all three `Tests` legs (`ubuntu-latest`, `ubuntu-24.04-arm`,
-`macos-latest`) and both blocking `Format` checks — `python` and the clang-format step of
-`cpp` — are green on the merge commit. The `cppcheck` step is advisory, so open its log if
-you care about the findings.
+`macos-latest`) and both `Format` jobs — `python` and `cpp` — are green on the merge commit.
+Every one of those checks blocks, so a green tick is the whole story; there is no advisory
+job whose log you have to open separately.
 
 Bump the version:
 
