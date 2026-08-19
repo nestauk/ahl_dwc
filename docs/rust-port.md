@@ -1,11 +1,23 @@
 # Assessment: porting the C++ core to Rust
 
-Status: assessment only. Nothing here has been agreed or started. Written against the worktree at
-`fix/gcc-cpp-compat` (tip `2f46f9d`).
+Status: assessment only, and **its framing has since been overtaken**. Written against the worktree
+at `fix/gcc-cpp-compat` (tip `2f46f9d`).
 
-The question is whether `ahl_dwc` should replace its C++ core — the ported `bw` model plus the
-hand-written Rcpp shim — with a Rust implementation exposed through PyO3, instead of the current
-pybind11 + scikit-build-core + CMake chain.
+> **Read this first.** Every option below assumes the port would happen _in this repository_, and
+> prices permanent divergence from upstream `bw` into the first day of work. That assumption no
+> longer holds: a Rust port is being explored in a **separate repository**, so `ahl_dwc` pays none
+> of that cost while it proceeds. The comparison below is still the right analysis of an _in-tree_
+> port, and the recommendation for this repository is unchanged — but the live question has narrowed
+> to _"under what conditions should `ahl_dwc` adopt an external implementation?"_. See
+> [ADR 0009](adr/0009-evaluate-rust-pyo3-reimplementation.md).
+>
+> The part that survives intact is the safety net: no implementation, in-tree or out, is adoptable
+> until the regression suite can tell you whether it is equivalent. That section is the one to act
+> on.
+
+The question this document was written to answer is whether `ahl_dwc` should replace its C++ core —
+the ported `bw` model plus the hand-written Rcpp shim — with a Rust implementation exposed through
+PyO3, instead of the current pybind11 + scikit-build-core + CMake chain.
 
 Short answer: **not yet, and probably not on the current evidence.** The pain this repo actually
 suffers is mostly build-and-distribution pain, which has a much cheaper fix. The single largest cost
@@ -16,13 +28,13 @@ once paid. The reasoning is below, with the conditions that would change the ans
 
 Every item here is a real, recorded event in this repository, not a hypothetical.
 
-| Pain                                                                                                                        | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A C++ overload-resolution difference between GCC/libstdc++ and Clang/libc++ broke all Linux builds while macOS stayed green | `bf87e07` "fix: remove duplicate NumericVector ctors for GCC compat"; the reasoning is preserved in-source at `src/shim.hpp:45-56`, and issue #7 records `-fpermissive` and `size_t` casts as tried and rejected                                                                                                                                                                                                                                                                                                            |
-| Stochastic output cannot be value-pinned, because `std::normal_distribution` is implementation-defined                      | `tests/regression/test_energy_build.py:1-7` says so explicitly; the Brownian path (`src/energy_build.cpp:56-70`) is therefore tested only for seed-reproducibility and seed-variance, never for values                                                                                                                                                                                                                                                                                                                      |
-| A hand-written 288-line Rcpp emulation layer sits under the whole model                                                     | `src/shim.hpp` — `NumericVector : public std::vector<double>` with `operator()` indexing (`:46-66`), a `DEF_OP` macro generating vector/scalar arithmetic (`:105-113`), a flat-buffer `NumericMatrix` with a `_` slice sentinel (`:15-18`, `:138-204`), and a `NamedBuilder`/`List::create` pair emulating `Rcpp::List` (`:249-286`). None of it bounds-checks; the binary operators size their result from the left operand only                                                                                           |
-| Wheels are built for one platform only, because cibuildwheel is not set up                                                  | `.github/workflows/publish-codeartifact.yml` header — a single `ubuntu-latest` runner, "If wheels for other platforms are needed, switch the build step to cibuildwheel". macOS, Linux arm64 and Windows consumers build from sdist and need a local toolchain                                                                                                                                                                                                                                                              |
-| ~~C/C++ formatting and static analysis are deliberately non-blocking~~ — **fixed, PR #21**                                  | Was `.github/workflows/format.yml` `cpp` job under `continue-on-error: true`, advisory "until a dedicated clang-format pass lands". That pass landed: clang-format is pinned and blocking over `shim.hpp` and `bindings.cpp`, with the upstream sources excluded by explicit file list ([ADR 0010](adr/0010-scope-clang-format-to-owned-sources.md)). `cppcheck` is still advisory pending a version pin. Kept in this table because it was one of the five pains the port was argued to fix — and it was fixed without one |
+| Pain                                                                                                                        | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A C++ overload-resolution difference between GCC/libstdc++ and Clang/libc++ broke all Linux builds while macOS stayed green | `bf87e07` "fix: remove duplicate NumericVector ctors for GCC compat"; the reasoning is preserved in-source at `src/shim.hpp:45-56`, and issue #7 records `-fpermissive` and `size_t` casts as tried and rejected                                                                                                                                                                                                                                                                                                                                                              |
+| Stochastic output cannot be value-pinned, because `std::normal_distribution` is implementation-defined                      | `tests/regression/test_energy_build.py:1-7` says so explicitly; the Brownian path (`src/energy_build.cpp:56-70`) is therefore tested only for seed-reproducibility and seed-variance, never for values                                                                                                                                                                                                                                                                                                                                                                        |
+| A hand-written 288-line Rcpp emulation layer sits under the whole model                                                     | `src/shim.hpp` — `NumericVector : public std::vector<double>` with `operator()` indexing (`:46-66`), a `DEF_OP` macro generating vector/scalar arithmetic (`:105-113`), a flat-buffer `NumericMatrix` with a `_` slice sentinel (`:15-18`, `:138-204`), and a `NamedBuilder`/`List::create` pair emulating `Rcpp::List` (`:249-286`). None of it bounds-checks; the binary operators size their result from the left operand only                                                                                                                                             |
+| Wheels are built for one platform only, because cibuildwheel is not set up                                                  | `.github/workflows/publish-codeartifact.yml` header — a single `ubuntu-latest` runner, "If wheels for other platforms are needed, switch the build step to cibuildwheel". macOS, Linux arm64 and Windows consumers build from sdist and need a local toolchain                                                                                                                                                                                                                                                                                                                |
+| ~~C/C++ formatting and static analysis are deliberately non-blocking~~ — **fixed, PR #21**                                  | Was `.github/workflows/format.yml` `cpp` job under `continue-on-error: true`, advisory "until a dedicated clang-format pass lands". That pass landed: clang-format is pinned and blocking over `shim.hpp` and `bindings.cpp`, with the upstream sources excluded by explicit file list ([ADR 0010](adr/0010-scope-clang-format-to-owned-sources.md)). `cppcheck` followed in PR #28: pinned to 2.17.1 and blocking too, over all of `src/`. Kept in this table because it was one of the five pains the port was argued to fix — and it was fixed without one, in about a day |
 
 Two of these five (the shim and the RNG portability) are genuine language/ecosystem problems that a
 Rust port would remove outright. Two (single-platform wheels, non-blocking C++ lint) are configuration
@@ -222,19 +234,29 @@ Three concrete changes:
    by explicit file list. The alternative floated here — pinning the exact upstream commit per
    vendored file and diffing in CI — was rejected on cost and remains the better answer if the
    number of vendored files grows. See [ADR 0010](adr/0010-scope-clang-format-to-owned-sources.md).
-   Residual: pin `cppcheck` and make it blocking (roadmap 3.4, 0.5 days).
+   Residual: none — `cppcheck` was pinned and made blocking in PR #28 (roadmap 3.4), so item 3
+   is complete.
 
-- Effort: **4–7 days total**, of which item 3 is now spent — **3–6 days remain**, plus 0.5 to pin
-  `cppcheck`. Risk: **low.** Each item is independently shippable and independently revertible, which
-  item 3 has now demonstrated in practice.
+- Effort: **4–7 days total**, of which item 3 is now fully spent — **3–5 days remain**
+  (cibuildwheel, and the portable normal distribution). Risk: **low.** Each item is independently
+  shippable and independently revertible, which item 3 has now demonstrated in practice.
 - What it does **not** fix: the shim stays, there is still no bounds checking, the build-time
   `pybind11`/`scikit-build-core` remain unpinned, and the next GCC-versus-Clang divergence is still
   possible — though CI now catches it.
 
 ### Recommendation
 
-**Do (c) now. Do the test hardening alongside it. Revisit (b) in six months against the decision
-triggers below.**
+**Do (c) now. Do the test hardening alongside it.**
+
+The clause that used to read "revisit (b) in six months" is superseded: (b) was a strategy for
+porting _in this repository_, and the port is now being explored in a separate one. `ahl_dwc` does
+not need to choose between (a), (b) and (c) at all — it does (c), and separately decides whether to
+**adopt** whatever the external work produces. See
+[ADR 0009](adr/0009-evaluate-rust-pyo3-reimplementation.md).
+
+That makes the test hardening more important, not less. An external implementation is judged by
+exactly one thing — whether it reproduces the golden values within `PHYS_RTOL` — and today there are
+four golden endpoints to judge it against.
 
 The reasoning is proportionality. Options (a) and (b) cost 15–25 and 6–9 days respectively and pay
 their largest cost — upstream divergence — permanently and irreversibly. Option (c) costs 4–7 days and
